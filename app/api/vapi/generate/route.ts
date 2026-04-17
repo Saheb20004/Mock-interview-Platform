@@ -1,7 +1,9 @@
 import { getRandomInterviewCover } from "@/lib/utils";
-import {google} from "@ai-sdk/google"
+import { createGroq } from '@ai-sdk/groq';
 import {generateText} from 'ai'
 import { db } from "@/firebase/admin";
+
+const groq = createGroq({ apiKey: process.env.GROQ_API_KEY });
 
 export async function GET(){
     return  Response.json({success:true,data:'Thank You!'},{status:200});
@@ -11,7 +13,7 @@ export async function POST(request:Request){
     const {type,role,level,techstack,amount,userid}=await request.json();
     try{
         const{text:questions}=await generateText({
-            model:google('gemini-2.0-flash-lite'),
+            model:groq('llama-3.3-70b-versatile'),
             prompt: `Prepare questions for a job interview.
         The job role is ${role}.
         The job experience level is ${level}.
