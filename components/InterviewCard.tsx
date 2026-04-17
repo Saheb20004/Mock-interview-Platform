@@ -6,7 +6,7 @@ import { Button } from './ui/button';
 import Link from 'next/link';
 import DisplayTechIcon from './DisplayTechIcon';
 
-const InterviewCard = ({interviewId,userId,role,type,techstack,createdAt}:InterviewCardProps) => {
+const InterviewCard = ({id,userId,role,type,techstack,createdAt}:InterviewCardProps) => {
     const feedback=null as Feedback | null;
     const nomalizedType=/mix/gi.test(type) ? 'Mixed' : type;
     const formattedDate=dayjs(feedback?.createdAt || createdAt || Date.now()).format('MMM D, YYYY');
@@ -28,25 +28,26 @@ const InterviewCard = ({interviewId,userId,role,type,techstack,createdAt}:Interv
                 <div className='flex flex-row gap-5 mt-3'>
                     <div className='flex flex-row gap-2'>
                         <Image src='/calendar.svg' alt='calendar' width={22} height={22} />
+                        <p>{formattedDate}</p>
                     </div>
-                    <p>{formattedDate}</p>
-                </div>
 
-                <div className='flex flex-row gap-2 items-center'>
-                    <Image src='/star.svg' alt='star' width={22} height={22} />
-                    <p>{feedback ?. totalScore || '---'}/100</p>
+                    <div className='flex flex-row gap-2 items-center'>
+                        <Image src='/star.svg' alt='star' width={22} height={22} />
+                        <p>{feedback ?. totalScore || '---'}/100</p>
+                    </div>
                 </div>
 
                 <p className='line-clamp-2 mt-5'>
                     {feedback ?. finalAssessment || 'No feedback available yet. Please complete the interview to receive feedback.'}
                 </p>
             </div>
+            
             <div className='flex flex-row justify-between'>
                 {/* <p>Tech Icons</p> */}
                 <DisplayTechIcon techStack={techstack} />
                 <Button className='btn-primary'>
-                    <Link href={feedback?`/interview/${interviewId}/feedback`
-                    :`/interview/${interviewId}`
+                    <Link href={feedback?`/interview/${id}/feedback`
+                    :`/interview/${id}`
                     }>
                         {feedback ? 'Check Feedback' : 'View'}
                     </Link>
