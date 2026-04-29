@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react';
 import { vapi } from '@/lib/vapi.sdk';
 // import { id } from 'zod/v4/locales';
 import { interviewer } from '@/constants';
+import { createFeedback } from '@/lib/actions/general.action';
+
 
 enum CallStatus{
     INACTIVE='INACTIVE',
@@ -31,7 +33,7 @@ const Agent = ({userName,userId,type,interviewId,questions}:AgentProps) => {
       const onCallEnd=() =>setCallStatus(CallStatus.FINISHED);
 
       const onMessage=(message:Message) => {
-        if(message.type==='transcript' && message.transcript==='final'){
+        if(message.type==='transcript' && message.transcriptType==='final'){
             const newMessage={role:message.role,content:message.transcript}
             setMessages((prev)=>[...prev,newMessage]);
         }
@@ -59,13 +61,14 @@ const Agent = ({userName,userId,type,interviewId,questions}:AgentProps) => {
         }
     }, [])
 
-    const handleGenerateFeedback=(messages:SavedMessage[]) => {
+    const handleGenerateFeedback=async(messages:SavedMessage[]) => {
         console.log('Generate feedback here')
         // to do : create a server action that generates feedback
-        const {success , id}={
-            success:true,
-            id:'feedback-id'
-        }
+        const {success , feedbackId: id}=await createFeedback({
+            interviewId:interviewId!,
+            userId:userId!,
+            transcript:messages
+        })
         if(success && id){
             router.push(`/interview/${interviewId}/feedback`);
         }

@@ -116,8 +116,8 @@ export const interviewer: CreateAssistantDTO = {
     useSpeakerBoost: true,
   },
   model: {
-    provider: "openai",
-    model: "gpt-4",
+    provider: "groq",
+    model: "llama-3.3-70b-versatile",
     messages: [
       {
         role: "system",
