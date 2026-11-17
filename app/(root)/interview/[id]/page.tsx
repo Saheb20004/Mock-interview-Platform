@@ -2,10 +2,10 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 
 import Agent from "@/components/Agent";
-import { getRandomInterviewCover } from "@/lib/utils";
+import { getInterviewCover } from "@/lib/utils";
 
 import {
-//   getFeedbackByInterviewId,
+  getFeedbackByInterviewId,
   getInterviewById,
 } from "@/lib/actions/general.action";
 import { getCurrentUser } from "@/lib/actions/auth.action";
@@ -19,10 +19,14 @@ const InterviewDetails = async ({ params }: RouteParams) => {
   const interview = await getInterviewById(id);
   if (!interview) redirect("/");
 
-//   const feedback = await getFeedbackByInterviewId({
-//     interviewId: id,
-//     userId: user?.id!,
-//   });
+  const feedback = user?.id
+    ? await getFeedbackByInterviewId({
+        interviewId: id,
+        userId: user.id,
+      })
+    : null;
+
+  const coverImage = getInterviewCover(interview.id, interview.role, interview.coverImage);
 
   return (
     <>
@@ -30,7 +34,7 @@ const InterviewDetails = async ({ params }: RouteParams) => {
         <div className="flex flex-row gap-4 items-center max-sm:flex-col">
           <div className="flex flex-row gap-4 items-center">
             <Image
-              src={getRandomInterviewCover()}
+              src={coverImage}
               alt="cover-image"
               width={40}
               height={40}
@@ -53,7 +57,7 @@ const InterviewDetails = async ({ params }: RouteParams) => {
         interviewId={id}
         type="interview"
         questions={interview.questions}
-        // feedbackId={feedback?.id}
+        feedbackId={feedback?.id}
       />
     </>
   );

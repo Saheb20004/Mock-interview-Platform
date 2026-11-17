@@ -21,6 +21,30 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== 'undefined') {
+                window.addEventListener('unhandledrejection', function(e) {
+                  var msg = String(e?.reason?.message || e?.reason || '');
+                  var stack = String(e?.reason?.stack || '');
+                  if (msg.includes('chrome:') || stack.includes('chrome-extension://')) {
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+                  }
+                });
+                window.addEventListener('error', function(e) {
+                  if (e?.filename && e.filename.startsWith('chrome-extension://')) {
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+                  }
+                });
+              }
+            `,
+          }}
+        />
+      </head>
       <body className={`${monaSans.className} antialiased pattern`}>
         {children}
 

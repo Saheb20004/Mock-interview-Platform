@@ -9,12 +9,14 @@ import { getInterviewsByUserId, getLatestInterviews } from '@/lib/actions/genera
 
 const page = async () => {
 
-  const user=await getCurrentUser();
+  const user = await getCurrentUser();
 
-  const [userInterviews,latestInterviews]=await Promise.all([
-    await getInterviewsByUserId(user?.id!),
-    await getLatestInterviews({userId:user?.id!})
-  ]);
+  const [userInterviews, latestInterviews] = user
+    ? await Promise.all([
+        getInterviewsByUserId(user.id),
+        getLatestInterviews({ userId: user.id }),
+      ])
+    : [null, null];
 
   const hasPastinterviews = (userInterviews?.length ?? 0) > 0;
   const hasUpcomingInterviews = (latestInterviews?.length ?? 0) > 0;
@@ -35,26 +37,26 @@ const page = async () => {
 
       <section className='flex flex-col gap-6 mt-8'>
         <h2>Your Interviews</h2>
-        <div className='interviews-section'>
+        <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 w-full'>
           {hasPastinterviews ? (
             userInterviews?.map((interview)=>(
               <InterviewCard {...interview} key={interview.id} />
             ))
           ):(
-             <p>You haven&apos;t taken any interviews</p>
+             <p className='col-span-full'>You haven&apos;t taken any interviews</p>
           )}
         </div>
       </section>
 
       <section className='flex flex-col gap-6 mt-8'>
         <h2>Take an interview</h2>
-        <div className='interviews-section'>
+        <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 w-full'>
           {hasUpcomingInterviews ? (
             latestInterviews?.map((interview)=>(
               <InterviewCard {...interview} key={interview.id} />
             ))
           ):(
-             <p>There are no interviews available</p>             
+             <p className='col-span-full'>There are no interviews available</p>             
           )}
         </div>
       </section>

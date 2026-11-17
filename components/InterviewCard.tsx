@@ -1,62 +1,63 @@
-
 import dayjs from 'dayjs';
 import Image from 'next/image';
-import { getRandomInterviewCover } from '@/lib/utils';
+import { getInterviewCover } from '@/lib/utils';
 import { Button } from './ui/button';
 import Link from 'next/link';
 import DisplayTechIcon from './DisplayTechIcon';
 import { getFeedbackByInterviewId } from '@/lib/actions/general.action';
+import { getCurrentUser } from '@/lib/actions/auth.action';
 
-const InterviewCard =async ({id,userId,role,type,techstack,createdAt}:InterviewCardProps) => {
-    const feedback=userId && id ? await getFeedbackByInterviewId({interviewId:id, userId}):null;
-    const nomalizedType=/mix/gi.test(type) ? 'Mixed' : type;
-    const formattedDate=dayjs(feedback?.createdAt || createdAt || Date.now()).format('MMM D, YYYY');
-  return (
-    <div className='card-border w-[360px] max-sm:w-full min-h-96'>
-        <div className='card-interview'>
-            <div>
+const InterviewCard = async ({ id, userId, role, type, techstack, createdAt, coverImage }: InterviewCardProps) => {
+    const user = await getCurrentUser();
+    const currentUserId = user?.id || userId;
+    const feedback = currentUserId && id ? await getFeedbackByInterviewId({ interviewId: id, userId: currentUserId }) : null;
+    const nomalizedType = /mix/gi.test(type) ? 'Mixed' : type;
+    const dateString = feedback?.createdAt || createdAt;
+    const formattedDate = dateString ? dayjs(dateString).format('MMM D, YYYY') : 'N/A';
+    const cardCover = getInterviewCover(id, role, coverImage);
 
-                <div className='absolute top-0 right-0 w-fit px-4 py-2 rounded-bl-lg bg-light-600'>
-                    <p className='badge-text'>{nomalizedType}</p>
-                </div>
-
-                <Image src={getRandomInterviewCover()} alt='cover image' width={90} height={90} className='object-fit rounded-full size-[90px]' />
-
-                <h3 className='nt-5 capitalize'>
-                    {role} Interview
-                </h3>
-
-                <div className='flex flex-row gap-5 mt-3'>
-                    <div className='flex flex-row gap-2'>
-                        <Image src='/calendar.svg' alt='calendar' width={22} height={22} />
-                        <p>{formattedDate}</p>
+    return (
+        <div className='card-border w-full min-h-96 flex flex-col justify-between'>
+            <div className='card-interview h-full'>
+                <div>
+                    <div className='absolute top-0 right-0 w-fit px-4 py-2 rounded-bl-lg bg-light-600'>
+                        <p className='badge-text'>{nomalizedType}</p>
                     </div>
 
-                    <div className='flex flex-row gap-2 items-center'>
-                        <Image src='/star.svg' alt='star' width={22} height={22} />
-                        <p>{feedback ?. totalScore || '---'}/100</p>
+                    <Image src={cardCover} alt='cover image' width={90} height={90} className='object-fit rounded-full size-[90px]' />
+
+                    <h3 className='mt-5 capitalize'>
+                        {role} Interview
+                    </h3>
+
+                    <div className='flex flex-row gap-5 mt-3'>
+                        <div className='flex flex-row gap-2'>
+                            <Image src='/calendar.svg' alt='calendar' width={22} height={22} />
+                            <p>{formattedDate}</p>
+                        </div>
+
+                        <div className='flex flex-row gap-2 items-center'>
+                            <Image src='/star.svg' alt='star' width={22} height={22} />
+                            <p>{feedback?.totalScore ?? '---'}/100</p>
+                        </div>
                     </div>
+
+                    <p className='line-clamp-2 mt-5'>
+                        {feedback?.finalAssessment || 'No feedback available yet. Please complete the interview to receive feedback.'}
+                    </p>
                 </div>
 
-                <p className='line-clamp-2 mt-5'>
-                    {feedback ?. finalAssessment || 'No feedback available yet. Please complete the interview to receive feedback.'}
-                </p>
-            </div>
-            
-            <div className='flex flex-row justify-between'>
-                {/* <p>Tech Icons</p> */}
-                <DisplayTechIcon techStack={techstack} />
-                <Button className='btn-primary'>
-                    <Link href={feedback?`/interview/${id}/feedback`
-                    :`/interview/${id}`
-                    }>
-                        {feedback ? 'Check Feedback' : 'View'}
-                    </Link>
-                </Button>
+                <div className='flex flex-row justify-between'>
+                    <DisplayTechIcon techStack={techstack} />
+                    <Button className='btn-primary'>
+                        <Link href={feedback ? `/interview/${id}/feedback` : `/interview/${id}`}>
+                            {feedback ? 'Check Feedback' : 'View'}
+                        </Link>
+                    </Button>
+                </div>
             </div>
         </div>
-    </div>
-  )
-}
+    );
+};
 
-export default InterviewCard
+export default InterviewCard;

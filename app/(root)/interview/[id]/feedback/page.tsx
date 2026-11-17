@@ -13,16 +13,36 @@ import { getCurrentUser } from "@/lib/actions/auth.action";
 const Feedback = async ({ params }: RouteParams) => {
   const { id } = await params;
   const user = await getCurrentUser();
+  if (!user) redirect("/sign-in");
 
   const interview = await getInterviewById(id);
   if (!interview) redirect("/");
 
   const feedback = await getFeedbackByInterviewId({
     interviewId: id,
-    userId: user?.id!,
+    userId: user.id,
   });
 
-  // console.log(feedback)
+  if (!feedback) {
+    return (
+      <section className="section-feedback">
+        <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+          <h1 className="text-3xl font-semibold">No Feedback Found</h1>
+          <p className="text-gray-400 max-w-md">
+            Feedback has not been generated for this interview yet. Take the interview session to receive your detailed AI feedback report.
+          </p>
+          <div className="flex gap-4 mt-6">
+            <Button className="btn-secondary" asChild>
+              <Link href="/">Back to Dashboard</Link>
+            </Button>
+            <Button className="btn-primary" asChild>
+              <Link href={`/interview/${id}`}>Start Interview</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="section-feedback">
@@ -78,7 +98,7 @@ const Feedback = async ({ params }: RouteParams) => {
 
       <div className="flex flex-col gap-3">
         <h3>Strengths</h3>
-        <ul>
+        <ul className="list-disc pl-5 space-y-1">
           {feedback?.strengths?.map((strength, index) => (
             <li key={index}>{strength}</li>
           ))}
@@ -87,7 +107,7 @@ const Feedback = async ({ params }: RouteParams) => {
 
       <div className="flex flex-col gap-3">
         <h3>Areas for Improvement</h3>
-        <ul>
+        <ul className="list-disc pl-5 space-y-1">
           {feedback?.areasForImprovement?.map((area, index) => (
             <li key={index}>{area}</li>
           ))}
@@ -95,7 +115,7 @@ const Feedback = async ({ params }: RouteParams) => {
       </div>
 
       <div className="buttons">
-        <Button className="btn-secondary flex-1">
+        <Button className="btn-secondary flex-1" asChild>
           <Link href="/" className="flex w-full justify-center">
             <p className="text-sm font-semibold text-primary-200 text-center">
               Back to dashboard
@@ -103,7 +123,7 @@ const Feedback = async ({ params }: RouteParams) => {
           </Link>
         </Button>
 
-        <Button className="btn-primary flex-1">
+        <Button className="btn-primary flex-1" asChild>
           <Link
             href={`/interview/${id}`}
             className="flex w-full justify-center"

@@ -1,0 +1,410 @@
+================================================================
+PROJECT: PrepWise - AI-Powered Mock Interview Platform
+================================================================
+
+----------------------------------------------------------------
+1. PROJECT OVERVIEW
+----------------------------------------------------------------
+PrepWise is a full-stack AI-powered mock interview preparation platform built
+with Next.js 16. It allows users to generate custom interview sessions based on
+their target role, tech stack, and experience level, then conduct a real-time
+voice interview with an AI interviewer, and finally receive structured feedback
+scored across 5 categories.
+
+----------------------------------------------------------------
+2. PROJECT STRUCTURE & ARCHITECTURE
+----------------------------------------------------------------
+
+mock-interview-prep/
+├── app/
+│   ├── (auth)/              → Route group for sign-in / sign-up pages
+│   │   ├── sign-in/
+│   │   ├── sign-up/
+│   │   └── layout.tsx       → Auth layout (no navbar)
+│   ├── (root)/              → Route group for protected app pages
+│   │   ├── interview/
+│   │   │   ├── page.tsx     → Interview generation page
+│   │   │   └── [id]/
+│   │   │       ├── page.tsx         → Live interview session page
+│   │   │       └── feedback/
+│   │   │           └── page.tsx     → Post-interview feedback page
+│   │   ├── layout.tsx       → Root layout with auth guard + navbar
+│   │   └── page.tsx         → Dashboard / home page
+│   ├── api/
+│   │   └── vapi/
+│   │       └── generate/
+│   │           └── route.ts → API route: generates interview questions via Groq LLM
+│   ├── globals.css
+│   └── layout.tsx           → Root HTML layout (font, dark mode, toaster)
+├── components/
+│   ├── ui/                  → shadcn/ui primitives (Button, Form, Input, Label, Sonner)
+│   ├── Agent.tsx            → Core voice interview component (Vapi integration)
+│   ├── AuthForm.tsx         → Unified sign-in / sign-up form
+│   ├── DisplayTechIcon.tsx  → Renders tech stack icons from devicon CDN
+│   ├── FormField.tsx        → Reusable react-hook-form field wrapper
+│   └── InterviewCard.tsx    → Card showing interview summary + feedback score
+├── constants/
+│   └── index.ts             → Tech mappings, Vapi interviewer config, feedbackSchema, dummy data
+├── firebase/
+│   ├── admin.ts             → Firebase Admin SDK (server-side: Firestore + Auth)
+│   └── client.ts            → Firebase Client SDK (browser-side: Auth)
+├── lib/
+│   ├── actions/
+│   │   ├── auth.action.ts   → Server actions: signUp, signIn, getCurrentUser, isAuthenticated
+│   │   └── general.action.ts→ Server actions: getInterviews, createFeedback, getFeedback
+│   ├── utils.ts             → cn(), getTechLogos(), getRandomInterviewCover()
+│   └── vapi.sdk.ts          → Vapi client instance initialization
+└── types/
+    ├── index.d.ts           → Global TypeScript interfaces
+    └── vapi.d.ts            → Vapi-specific type declarations
+
+Architecture Pattern: Next.js App Router with Route Groups
+- Server Components for data fetching (dashboard, feedback, interview details)
+- Client Components for interactivity (Agent, AuthForm)
+- Server Actions for all backend logic (no separate Express server needed)
+- Two Firebase instances: Admin SDK (server) + Client SDK (browser)
+
+----------------------------------------------------------------
+3. TECH STACK
+----------------------------------------------------------------
+- Framework:       Next.js 16 (App Router)
+- Language:        TypeScript
+- Styling:         Tailwind CSS v4 + shadcn/ui + Radix UI
+- Auth:            Firebase Authentication (email/password)
+- Database:        Firebase Firestore (NoSQL)
+- Voice AI:        Vapi.ai (real-time voice conversation)
+- LLM (questions): Groq API - llama-3.3-70b-versatile (via Vercel AI SDK)
+- LLM (feedback):  Groq API - llama-3.3-70b-versatile (via generateObject)
+- Speech-to-Text:  Deepgram nova-2 (via Vapi)
+- Text-to-Speech:  ElevenLabs "sarah" voice (via Vapi)
+- Form Handling:   react-hook-form + zod validation
+- Date Formatting: dayjs
+- Notifications:   sonner (toast)
+- Icons:           devicon CDN (dynamic tech logos)
+
+----------------------------------------------------------------
+4. KEY FEATURES & IMPLEMENTATION
+----------------------------------------------------------------
+
+A. AUTHENTICATION FLOW
+   - User registers via Firebase Client SDK (createUserWithEmailAndPassword)
+   - On success, user record is saved to Firestore via signUp server action
+   - On sign-in, Firebase ID token is obtained and sent to signIn server action
+   - Server creates a session cookie (httpOnly, secure, 7-day expiry) using
+     Firebase Admin's createSessionCookie
+   - Every protected route checks the session cookie via isAuthenticated()
+   - getCurrentUser() decodes the session cookie and fetches user from Firestore
+
+B. INTERVIEW GENERATION (Vapi "generate" flow)
+   - User clicks "Start an Interview" → goes to /interview
+   - Agent component starts a Vapi call with the VAPI_ASSISTANT_ID
+   - The Vapi assistant (configured on Vapi dashboard) collects: role, level,
+     type (technical/behavioral/mixed), tech stack, number of questions
+   - Vapi assistant calls the webhook: POST /api/vapi/generate
+   - The route handler calls Groq LLM to generate questions as a JSON array
+   - Interview document is saved to Firestore with finalized: true
+   - User is redirected to dashboard
+
+C. LIVE INTERVIEW SESSION (Vapi "interview" flow)
+   - User opens an interview card → /interview/[id]
+   - Agent component fetches interview questions and starts a Vapi call
+   - The interviewer assistant config is defined locally in constants/index.ts
+   - Uses Groq llama-3.3-70b as the LLM, Deepgram for STT, ElevenLabs for TTS
+   - Questions are injected as variable values into the Vapi assistant prompt
+   - All transcript messages are captured via vapi.on('message') events
+   - Real-time speaking animation shown via vapi.on('speech-start/end') events
+   - Latest transcript message displayed with fade-in animation
+
+D. FEEDBACK GENERATION
+   - When call ends (CallStatus.FINISHED), createFeedback server action is called
+   - Full transcript is formatted and sent to Groq via generateObject (Vercel AI SDK)
+   - Groq returns structured JSON validated against feedbackSchema (zod)
+   - Feedback is scored across 5 categories (0-100 each):
+       1. Communication Skills
+       2. Technical Knowledge
+       3. Problem Solving
+       4. Cultural Fit
+       5. Confidence and Clarity
+   - Also returns: strengths[], areasForImprovement[], finalAssessment string
+   - Feedback saved to Firestore "feedback" collection
+   - User redirected to /interview/[id]/feedback
+
+E. DASHBOARD
+   - Parallel data fetching with Promise.all for performance
+   - Shows "Your Interviews" (user's own past interviews)
+   - Shows "Take an Interview" (other users' finalized interviews to attempt)
+   - InterviewCard shows: role, type badge, date, score, final assessment preview,
+     tech stack icons, and CTA button (View or Check Feedback)
+
+F. TECH ICON DISPLAY
+   - getTechLogos() normalizes tech names using the mappings constant
+   - Fetches icon URLs from devicon CDN (jsdelivr)
+   - HEAD request checks if icon exists; falls back to /tech.svg if not
+   - Shows max 3 icons with overlap styling and tooltip on hover
+
+----------------------------------------------------------------
+5. KEY FUNCTIONS
+----------------------------------------------------------------
+
+auth.action.ts:
+  - signUp()            → Creates Firestore user doc after Firebase Auth registration
+  - signIn()            → Verifies user exists, sets session cookie
+  - setSessionCookie()  → Creates httpOnly Firebase session cookie (7 days)
+  - getCurrentUser()    → Reads session cookie, verifies it, returns User object
+  - isAuthenticated()   → Boolean check used in layout route guards
+
+general.action.ts:
+  - getInterviewsByUserId()     → Fetches user's own interviews ordered by date
+  - getLatestInterviews()       → Fetches other users' finalized interviews
+  - getInterviewById()          → Fetches single interview by Firestore doc ID
+  - createFeedback()            → Calls Groq LLM, saves structured feedback to Firestore
+  - getFeedbackByInterviewId()  → Fetches feedback for a specific interview + user
+
+Agent.tsx:
+  - handleCall()            → Starts Vapi session (generate or interview mode)
+  - handleDisconnect()      → Stops Vapi session
+  - handleGenerateFeedback()→ Triggers createFeedback and navigates to feedback page
+  - useEffect (events)      → Registers/cleans up all Vapi event listeners
+  - useEffect (callStatus)  → Triggers post-call logic when status = FINISHED
+
+api/vapi/generate/route.ts:
+  - POST handler → Receives interview params from Vapi webhook, calls Groq to
+    generate questions, saves interview to Firestore
+
+utils.ts:
+  - cn()                    → Merges Tailwind classes (clsx + tailwind-merge)
+  - getTechLogos()          → Async function to resolve tech icon URLs
+  - getRandomInterviewCover()→ Returns random company logo from covers array
+
+----------------------------------------------------------------
+6. STRENGTHS
+----------------------------------------------------------------
+1. End-to-end AI pipeline: question generation → voice interview → LLM feedback
+   all in one seamless flow.
+2. Real-time voice interaction using Vapi with ElevenLabs TTS and Deepgram STT
+   gives a realistic interview experience.
+3. Structured feedback with zod schema validation ensures consistent, parseable
+   AI output — no hallucinated fields.
+4. Server Actions eliminate the need for a separate API layer for most operations,
+   keeping the codebase lean.
+5. Dual Firebase setup (Admin SDK server-side, Client SDK browser-side) is the
+   correct and secure pattern — private keys never exposed to the browser.
+6. Session cookie auth (httpOnly) is more secure than storing tokens in localStorage.
+7. Parallel data fetching (Promise.all) on the dashboard avoids waterfall requests.
+8. TypeScript throughout with global type declarations in types/index.d.ts.
+9. Route groups ((auth) and (root)) cleanly separate layouts without affecting URLs.
+10. Reusable Agent component handles both "generate" and "interview" modes with
+    a single type prop.
+
+----------------------------------------------------------------
+7. WEAKNESSES / LIMITATIONS
+----------------------------------------------------------------
+1. Firebase API key is hardcoded in firebase/client.ts — should be in .env.local.
+2. No loading states or skeletons on the dashboard while data fetches server-side.
+3. getRandomInterviewCover() is not deterministic — cover image changes on every
+   render/refresh, which can look inconsistent.
+4. No pagination on interviews list — could be slow with many interviews.
+5. Error handling in Agent.tsx only logs to console; no user-facing error UI.
+6. No rate limiting on the /api/vapi/generate route — vulnerable to abuse.
+7. getTechLogos() makes a HEAD request per tech item on every render — no caching.
+8. The feedbackId param in createFeedback is accepted but the Agent never passes
+   it, so feedback can be duplicated if the same interview is completed twice.
+9. No test coverage (unit or integration tests).
+10. Password is accepted in SignUpParams type but not stored (correct), yet it's
+    still passed unnecessarily from the client.
+
+----------------------------------------------------------------
+8. CHALLENGES FACED & HOW THEY WERE OVERCOME
+----------------------------------------------------------------
+
+Challenge 1: Dual Firebase SDK Setup
+  Problem: Firebase Admin SDK (for server actions) and Firebase Client SDK
+  (for browser auth) both need to be initialized without conflicts.
+  Solution: Used getApps().length check in both admin.ts and client.ts to
+  prevent re-initialization on hot reloads. Admin SDK uses service account
+  credentials from env vars; Client SDK uses public config.
+
+Challenge 2: Structured LLM Output
+  Problem: Getting Groq LLM to return consistent, parseable JSON for feedback
+  instead of free-form text.
+  Solution: Used Vercel AI SDK's generateObject() with a strict zod schema
+  (feedbackSchema). This forces the LLM output to match the schema exactly,
+  eliminating the need for manual JSON parsing or error-prone regex.
+
+Challenge 3: Vapi Event Lifecycle Management
+  Problem: Vapi fires events (call-start, call-end, message, speech-start,
+  speech-end) that need to update React state, but improper cleanup causes
+  memory leaks and stale closures.
+  Solution: Registered all event listeners inside a useEffect with a cleanup
+  function that calls vapi.off() for each event, ensuring no duplicate
+  listeners across re-renders.
+
+Challenge 4: Session-Based Authentication with Next.js App Router
+  Problem: Next.js App Router doesn't support traditional session middleware
+  like Express. Needed secure, server-side auth checks on every protected route.
+  Solution: Used Firebase Admin's createSessionCookie to issue an httpOnly
+  cookie on sign-in. Each protected layout calls isAuthenticated() as an async
+  server component, redirecting unauthenticated users before any page renders.
+
+Challenge 5: Passing Dynamic Questions to Vapi
+  Problem: The Vapi interviewer assistant needs the interview questions at
+  runtime, but the assistant config is static.
+  Solution: Used Vapi's variableValues feature when calling vapi.start().
+  Questions are formatted as a bullet list string and injected into the
+  assistant's system prompt via the {{questions}} placeholder.
+
+Challenge 6: Tech Icon Resolution
+  Problem: Tech names from user input (e.g., "React.js", "reactjs", "react")
+  are inconsistent and the devicon CDN requires exact normalized names.
+  Solution: Built a comprehensive mappings object in constants/index.ts that
+  normalizes all common variations to a canonical key, then constructed the
+  CDN URL and verified existence with a HEAD request before rendering.
+
+Challenge 7: Two-Mode Agent Component
+  Problem: The interview generation flow and the actual interview flow are
+  different Vapi sessions with different assistant configs, but the UI is
+  nearly identical.
+  Solution: A single Agent component accepts a type prop ("generate" |
+  "interview"). The handleCall function branches on this type to start either
+  the dashboard Vapi assistant (for generation) or the local interviewer
+  config (for the actual interview).
+
+----------------------------------------------------------------
+9. REAL-WORLD IMPACT & BEST USE CASES
+----------------------------------------------------------------
+1. Job seekers preparing for technical interviews at top companies.
+2. Bootcamp graduates and CS students practicing before their first job hunt.
+3. Career switchers who need to practice articulating their transferable skills.
+4. Non-native English speakers improving interview communication under pressure.
+5. HR teams or coding bootcamps offering it as a self-service prep tool.
+6. Professionals preparing for senior/leadership roles with behavioral questions.
+7. Universities integrating it into career services for students.
+
+Real-world differentiator: Unlike static question banks (LeetCode, Glassdoor),
+PrepWise simulates the actual pressure of a live voice conversation, which
+trains both technical recall AND communication under stress simultaneously.
+
+----------------------------------------------------------------
+10. POTENTIAL INTERVIEWER QUESTIONS & ANSWERS
+----------------------------------------------------------------
+
+Q1: Why did you choose Next.js App Router over Pages Router?
+A: App Router enables React Server Components, which means data fetching
+   happens on the server with zero client-side JS for those components.
+   This improves performance and allows using async/await directly in
+   components. Server Actions also eliminate the need for separate API
+   routes for most CRUD operations.
+
+Q2: Why Firebase over a traditional SQL database?
+A: Firebase Firestore offers real-time capabilities, scales automatically,
+   and integrates tightly with Firebase Auth. For this use case — storing
+   interviews and feedback documents with flexible schemas — a NoSQL
+   document store is a natural fit. Firebase Admin SDK also provides
+   session cookie management out of the box.
+
+Q3: How does the AI feedback generation work?
+A: After the voice interview ends, the full transcript (array of
+   {role, content} objects) is formatted into a readable string and sent
+   to Groq's llama-3.3-70b model via Vercel AI SDK's generateObject().
+   A zod schema enforces the exact output shape — totalScore, 5 category
+   scores with comments, strengths, areasForImprovement, and finalAssessment.
+   The result is saved to Firestore and displayed on the feedback page.
+
+Q4: How is authentication secured?
+A: Firebase handles password hashing and auth token management. On sign-in,
+   we get a short-lived ID token from the client, exchange it for a
+   long-lived session cookie via Firebase Admin's createSessionCookie(),
+   and store it as an httpOnly, secure, sameSite=lax cookie. This prevents
+   XSS attacks from stealing the token since JavaScript cannot access
+   httpOnly cookies.
+
+Q5: What is Vapi and why did you use it?
+A: Vapi is a voice AI platform that orchestrates the full real-time voice
+   pipeline: STT (Deepgram), LLM (Groq), and TTS (ElevenLabs) in a single
+   SDK. It handles WebRTC connections, turn-taking, and transcript streaming.
+   Using Vapi avoided building this complex pipeline from scratch and allowed
+   focus on the product logic.
+
+Q6: How do you handle the case where LLM output doesn't match the expected schema?
+A: generateObject() with a zod schema throws an error if the LLM output
+   cannot be coerced into the schema. This is caught in the try/catch block
+   in createFeedback(), which returns { success: false }. The Agent component
+   then redirects the user to the home page instead of crashing.
+
+Q7: How would you scale this application?
+A: Several improvements for scale:
+   - Add Redis caching for getTechLogos() to avoid repeated CDN HEAD requests
+   - Implement Firestore composite indexes for complex queries
+   - Add a job queue (e.g., AWS SQS or BullMQ) for feedback generation
+     instead of blocking the user during LLM inference
+   - Use Next.js ISR or React cache() for interview data that doesn't change
+   - Add CDN (Cloudflare) in front of static assets
+   - Rate limit the /api/vapi/generate route with middleware
+
+Q8: What is the difference between the two Agent modes?
+A: "generate" mode starts a Vapi assistant configured on the Vapi dashboard
+   (identified by VAPI_ASSISTANT_ID). This assistant collects interview
+   parameters from the user via conversation and calls the /api/vapi/generate
+   webhook to create the interview. "interview" mode uses a locally defined
+   assistant config (the interviewer constant) with the actual questions
+   injected at runtime via variableValues.
+
+Q9: Why use zod for form validation AND LLM output schema?
+A: Zod provides a single source of truth for data shapes. For forms, it
+   integrates with react-hook-form via zodResolver for client-side validation.
+   For LLM output, Vercel AI SDK's generateObject() uses the same zod schema
+   to enforce structured output. This consistency reduces bugs and makes
+   the codebase easier to maintain.
+
+Q10: What would you improve if you had more time?
+A: 
+   - Add OAuth (Google/GitHub) sign-in via Firebase
+   - Implement a proper loading/skeleton UI for server-rendered pages
+   - Add interview history with filtering and search
+   - Store cover image deterministically (save to Firestore on creation)
+   - Add unit tests for server actions and integration tests for auth flow
+   - Build an admin dashboard to monitor usage and feedback quality
+   - Add support for video interviews using WebRTC
+   - Implement spaced repetition to resurface weak areas from past feedback
+
+Q11: How does the transcript get captured during the interview?
+A: Vapi emits 'message' events during the call. Each message has a type
+   and transcriptType. We filter for type === 'transcript' AND
+   transcriptType === 'final' (ignoring interim/partial transcripts).
+   Each final transcript is appended to the messages state array with its
+   role (user or assistant). This array is passed to createFeedback() when
+   the call ends.
+
+Q12: How do you prevent unauthorized access to interview pages?
+A: The (root) layout.tsx is an async server component that calls
+   isAuthenticated() on every render. If the session cookie is missing or
+   invalid, it calls redirect('/sign-in') before any child page renders.
+   Individual interview pages also call getCurrentUser() and redirect if
+   the interview doesn't exist, preventing access to other users' data.
+
+Q13: What is the role of Server Actions in this project?
+A: Server Actions (marked with 'use server') run exclusively on the server
+   and can be called directly from client or server components like regular
+   async functions. They replace traditional API routes for data mutations
+   and queries. This means Firestore queries and Firebase Admin calls never
+   run in the browser, keeping service account credentials secure.
+
+Q14: How does the tech stack icon system work?
+A: The mappings constant normalizes tech name variations to canonical keys
+   (e.g., "React.js" → "react"). getTechLogos() constructs a devicon CDN
+   URL for each tech, then makes a HEAD request to verify the icon exists.
+   If it does, the URL is used; otherwise it falls back to a local /tech.svg.
+   DisplayTechIcon renders up to 3 icons with negative margin overlap and
+   a CSS tooltip showing the tech name on hover.
+
+Q15: Why use Groq instead of OpenAI?
+A: Groq's inference speed is significantly faster than OpenAI for the same
+   model size due to their custom LPU (Language Processing Unit) hardware.
+   For a real-time interview application where feedback generation latency
+   matters, Groq's speed provides a better user experience. The llama-3.3-70b
+   model also performs comparably to GPT-4 class models for structured
+   output tasks.
+
+----------------------------------------------------------------
+END OF DOCUMENT
+----------------------------------------------------------------

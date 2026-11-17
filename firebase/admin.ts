@@ -17,10 +17,17 @@ function initFirebaseAdmin() {
     });
   }
 
-  return {
-    auth: getAuth(),
-    db: getFirestore(),
-  };
+    const db = getFirestore();
+    try {
+      db.settings({ ignoreUndefinedProperties: true });
+    } catch {
+      // settings can only be set once
+    }
+
+    return {
+      auth: getAuth(),
+      db,
+    };
 }
 
 export const { auth, db } = initFirebaseAdmin();

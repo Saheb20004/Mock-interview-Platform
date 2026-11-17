@@ -1,0 +1,433 @@
+MOCK-INTERVIEW-PREP (PREPWISE)
+PROJECT INTERVIEW BRIEF
+
+Prepared from the current repository source. Read this as a guide to the implementation that exists today. Personal development challenges and outcomes are presented as plausible interview talking points; adapt them to what you actually experienced.
+
+======================================================================
+1. PROJECT SUMMARY
+======================================================================
+
+PrepWise is a web application for practicing job interviews with an AI voice interviewer. A user signs up, selects or generates an interview scenario, participates in a voice conversation, and receives AI-generated feedback based on the transcript. The dashboard shows the user's interviews and other finalized interview scenarios.
+
+The project combines a web application, authentication, a document database, language-model calls, speech transcription, and text-to-speech. Its central product idea is to make interview practice repeatable and accessible without needing another person to conduct every practice session.
+
+A concise interview introduction:
+
+"I built PrepWise, an AI-powered mock interview practice app. Users authenticate, generate a role-specific question set, take a voice interview with an AI interviewer, and receive structured feedback on areas such as communication, technical knowledge, problem solving, and clarity. I used Next.js App Router and TypeScript for the application, Firebase Authentication and Firestore for identity and persistence, Groq models for question and feedback generation, and Vapi for the real-time voice experience."
+
+======================================================================
+2. USER FLOW
+======================================================================
+
+1. A visitor opens the sign-in or sign-up page.
+2. The client-side form validates name, email, and password using Zod and React Hook Form.
+3. Firebase client authentication creates the account or signs in the user.
+4. On sign-in, the client obtains a Firebase ID token. A server action verifies the user and creates an HTTP-only session cookie.
+5. The protected root route checks the session and redirects unauthenticated users to sign-in.
+6. From the dashboard, the user opens the interview generation flow. The client-side Agent starts a Vapi assistant configured for interview generation.
+7. The generation API route calls Groq to produce questions for the requested role, experience level, technologies, interview focus, and question count. It parses the returned JSON and saves an interview document in Firestore.
+8. The user selects an interview and starts a voice session. The configured Vapi assistant uses Deepgram transcription, an ElevenLabs voice, and a Groq conversational model. The stored questions are supplied to the assistant as interview context.
+9. The Agent collects final transcript messages from Vapi. When the call ends, it sends the transcript to a server action.
+10. The server action asks a Groq model for schema-constrained feedback and stores the result in Firestore.
+11. The feedback route displays the overall score, category scores and comments, strengths, areas to improve, and final assessment. Dashboard cards can link to an interview or its feedback.
+
+The source code makes this intended path clear, though production behavior depends on valid environment variables, Firebase configuration, provider credentials, Firestore indexes/rules, and successful provider responses.
+
+======================================================================
+3. TECHNOLOGY STACK AND WHY IT FITS
+======================================================================
+
+- Next.js 16.2.3 with the App Router: route segments, layouts, server-rendered pages, route handlers, and server actions are colocated in the app structure.
+- React 19 and TypeScript: interactive UI plus typed component props and data shapes.
+- Tailwind CSS 4 and reusable UI components: styling and common form/button elements.
+- Firebase Authentication: user sign-up and sign-in.
+- Firebase Admin SDK: server-side session verification and trusted server access to Firestore.
+- Cloud Firestore: stores user profiles, interview scenarios, and feedback documents.
+- Vercel AI SDK and Groq: generates interview questions and structured feedback with a Llama model.
+- Vapi Web SDK: browser voice-call lifecycle and transcript events.
+- Deepgram: speech transcription configured for the interview assistant.
+- ElevenLabs: synthesized interviewer voice configured in the assistant definition.
+- Zod and React Hook Form: form validation and typed feedback output constraints.
+- Day.js: human-readable dates.
+
+======================================================================
+4. ARCHITECTURE
+======================================================================
+
+The application follows a small full-stack, server/client architecture:
+
+Browser/client components
+  AuthForm handles the interactive authentication form.
+  Agent manages Vapi calls, transcript state, and end-of-call behavior.
+  Reusable UI components render form controls and buttons.
+
+Next.js server-rendered pages and layouts
+  Root layout checks authentication for protected pages.
+  Dashboard and interview/feedback pages load data on the server.
+  Auth layout redirects already-authenticated users away from auth pages.
+
+Server actions and route handler
+  auth.action.ts handles profile creation, session-cookie setup, current-user lookup, and authentication checks.
+  general.action.ts reads interview and feedback records and generates/saves feedback.
+  app/api/vapi/generate/route.ts generates questions and persists an interview.
+
+External services and persistence
+  Firebase Authentication identifies users.
+  Firebase Admin verifies sessions and reads/writes Firestore on the server.
+  Groq generates question lists and feedback objects.
+  Vapi coordinates voice sessions and provider integrations.
+
+A simplified data path:
+
+User -> Next.js UI -> server action/API route -> Groq or Firebase
+User voice -> Vapi -> transcript events -> Agent -> feedback server action -> Groq -> Firestore -> feedback page
+
+This structure keeps the voice interaction in the browser while keeping the admin database access and model feedback generation on the server. It is a practical fit for a portfolio-scale app, though the server endpoints still need stronger authorization and validation before handling untrusted public traffic.
+
+======================================================================
+5. PROJECT STRUCTURE
+======================================================================
+
+app/
+  layout.tsx                         Global document, font, metadata, toast provider
+  globals.css                        Global styles and component classes
+  (auth)/layout.tsx                  Redirects signed-in users away from auth pages
+  (auth)/sign-in/page.tsx            Sign-in route
+  (auth)/sign-up/page.tsx            Sign-up route
+  (root)/layout.tsx                  Protected app shell and navigation
+  (root)/page.tsx                    Dashboard and interview lists
+  (root)/interview/page.tsx          Interview generation entry
+  (root)/interview/[id]/page.tsx     Interview details and live session
+  (root)/interview/[id]/feedback/page.tsx  Feedback report
+  api/vapi/generate/route.ts         Question generation endpoint
+
+components/
+  Agent.tsx                          Vapi lifecycle, voice session, transcript, feedback trigger
+  AuthForm.tsx                       Sign-up/sign-in form and Firebase client auth
+  InterviewCard.tsx                  Interview summary card and feedback link
+  FormField.tsx                      Generic React Hook Form field
+  DisplayTechIcon.tsx                Technology icon display
+  ui/                                Shared form, input, button, label, toast components
+
+lib/
+  actions/auth.action.ts             Firebase-backed auth and session actions
+  actions/general.action.ts          Interview/feedback Firestore queries and feedback generation
+  vapi.sdk.ts                        Browser Vapi SDK instance
+  utils.ts                           Class merging, technology icon lookup, random cover selection
+
+firebase/
+  client.ts                          Firebase browser SDK initialization
+  admin.ts                           Firebase Admin SDK initialization
+
+constants/
+  index.ts                           Assistant configuration, technology mappings, feedback schema, assets/demo data
+
+types/
+  index.d.ts                         Shared application interfaces
+  vapi.d.ts                          Vapi message event types
+
+public/
+  Static brand, avatar, icon, pattern, and interview-cover assets
+
+======================================================================
+6. IMPORTANT IMPLEMENTATION DETAILS AND FUNCTIONS
+======================================================================
+
+Authentication — lib/actions/auth.action.ts and components/AuthForm.tsx
+- authFormSchema(type) defines a conditional Zod schema. Sign-up requires a name of at least three characters; both modes require a valid email and a password of at least three characters.
+- AuthForm uses React Hook Form with zodResolver.
+- Sign-up calls Firebase client createUserWithEmailAndPassword, then the signUp server action writes the profile (name and email) to users/{uid}.
+- Sign-in uses Firebase client signInWithEmailAndPassword, gets an ID token, and passes it to the signIn server action.
+- setSessionCookie asks Firebase Admin to create a seven-day session cookie and sets it HTTP-only, with secure enabled in production and SameSite=Lax.
+- getCurrentUser reads and verifies the session cookie, then loads the profile from Firestore. isAuthenticated is a boolean wrapper.
+
+Interview data — lib/actions/general.action.ts
+- getInterviewsByUserId(userId) queries the interviews collection for the user's records, newest first.
+- getLatestInterviews({ userId, limit }) queries finalized interviews excluding the current user, with a default limit of 20.
+- getInterviewById(id) loads one interview document.
+- getFeedbackByInterviewId({ interviewId, userId }) finds feedback for a specific interview and user.
+
+Question generation — app/api/vapi/generate/route.ts
+- GET is a simple route health response.
+- POST reads type, role, level, techstack, amount, and userid from the JSON request.
+- generateText calls Groq with a prompt that requests a JSON array of voice-friendly questions.
+- The route parses that text, splits the technology string, creates an interview document marked finalized, and stores a timestamp and cover image.
+
+Voice experience — components/Agent.tsx and constants/index.ts
+- CallStatus models INACTIVE, CONNECTING, ACTIVE, and FINISHED states.
+- A React effect registers Vapi call-start, call-end, message, speech-start, speech-end, and error listeners, and removes them during cleanup.
+- Only final transcript events are retained in the local messages array.
+- The UI displays AI and user avatars, speech activity, the latest transcript line, and Call/End controls.
+- For a generated interview, the Agent starts the configured Vapi assistant with user variables. For a practice interview, it starts the interviewer configuration and passes the saved question list.
+- constants/index.ts configures a friendly interviewer, Deepgram Nova-2 English transcription, an ElevenLabs voice, and a Groq Llama model with concise interview instructions.
+- When a call ends, Agent routes generation sessions back to the dashboard; for a practice interview, it invokes createFeedback.
+
+Feedback — lib/actions/general.action.ts, constants/index.ts, and feedback page
+- feedbackSchema uses Zod to constrain the response structure: total score, exactly five named categories, strengths, improvement areas, and final assessment.
+- createFeedback formats the transcript and invokes generateObject with Groq and feedbackSchema.
+- The result is written to the feedback collection with interviewId, userId, and createdAt.
+- The feedback page retrieves and renders those values, while InterviewCard shows the score and assessment summary when feedback exists.
+
+Shared helpers
+- cn merges conditional class names using clsx and tailwind-merge.
+- getTechLogos normalizes technology names with the mappings table, checks a Devicon CDN URL, and falls back to /tech.svg.
+- getRandomInterviewCover selects an image from the configured cover list.
+
+======================================================================
+7. DATA MODEL
+======================================================================
+
+users/{uid}
+- name
+- email
+
+interviews/{documentId}
+- role
+- level
+- type
+- techstack: string array
+- questions: string array
+- userId
+- finalized
+- coverImage
+- createdAt
+
+feedback/{documentId}
+- interviewId
+- userId
+- totalScore
+- categoryScores: five named categories, each with score and comment
+- strengths: string array
+- areasForImprovement: string array
+- finalAssessment
+- createdAt
+
+The code defines TypeScript interfaces in types/index.d.ts. Firestore itself is schemaless, so runtime validation and ownership checks are important additions for reliability and security.
+
+======================================================================
+8. STRENGTHS
+======================================================================
+
+- Solves a recognizable problem: people need practice, but may lack an interview partner or confidence speaking aloud.
+- The flow is end-to-end: authentication, scenario generation, voice practice, transcript capture, persistence, and feedback display.
+- Voice interaction is more realistic than a static quiz and helps users practice spoken explanations.
+- Feedback is broken into understandable dimensions rather than returning only a generic paragraph.
+- The feedback response uses a schema, reducing the chance that the UI receives an arbitrary shape.
+- Server-rendered pages and server-side Firebase Admin access provide a clear place for protected data operations.
+- Reusable UI components and shared interfaces make the code easier to navigate.
+- Provider boundaries are visible: Vapi handles voice orchestration, Groq handles language tasks, and Firebase handles identity/data.
+- The same stored interview can be revisited, and the user can retake it from the feedback screen.
+
+======================================================================
+9. WEAKNESSES, RISKS, AND IMPROVEMENTS
+======================================================================
+
+Security and authorization
+- The generation POST route accepts userid from the request body and does not verify the caller's Firebase session. A client can potentially claim another user ID. Derive the user identity from a verified session on the server and reject unauthenticated calls.
+- The createFeedback server action accepts userId and interviewId from the client and does not verify that the session user owns the interview. Validate the session and ownership before generating or writing feedback.
+- getInterviewById reads by ID alone. Pages should verify that the signed-in user is allowed to access the interview, unless public sharing is intentional.
+- The Firebase browser configuration is in source. Firebase web config is generally intended to be public, but it must be protected by appropriate Firebase Auth, Firestore rules, domain restrictions, and quota controls. Never expose Admin service-account credentials. The Admin credentials are read from environment variables.
+
+Input and model-output validation
+- The generation endpoint destructures arbitrary JSON without a Zod request schema, bounds on amount, or normalization. Validate types and maximum lengths before calling the model.
+- Question output is parsed with JSON.parse from free-form model text. A formatting deviation becomes a 500 response. Prefer structured output with a schema and validate the question count/content.
+- The request can influence prompt text. Bound and sanitize inputs and add rate limiting to control abuse and cost.
+- Feedback scores are typed as numbers, but the schema does not constrain them to 0 through 100. Add min/max constraints.
+- The feedback prompt asks for five categories but names “Cultural & Role Fit” and “Confidence & Clarity,” while the schema requires “Cultural Fit” and “Confidence and Clarity.” This mismatch may lead to failed structured output or inconsistent interpretation; align labels.
+
+Reliability and user experience
+- In Agent, call-end changes state to FINISHED, while manual disconnect also sets FINISHED before calling vapi.stop. The effect that watches FINISHED can generate feedback while messages are still changing or trigger more than once. Use a guarded, idempotent completion handler and wait for the final transcript event.
+- There is no visible loading/error state for question generation or feedback generation, and provider errors are mostly logged to the console.
+- A Vapi start failure can leave the UI in CONNECTING because handleCall does not catch and reset errors.
+- The feedback page does not explicitly handle a missing feedback record; values may display blank or empty sections. Add a clear pending/not-found state.
+- Newest interviews are queried with an inequality filter and ordering that may require a Firestore composite index. Confirm indexes in the deployed Firebase project.
+- getTechLogos performs a HEAD request per technology at render time against a third-party CDN. This increases latency and makes icon rendering dependent on the CDN. Use a local mapping/assets or cache the lookup.
+- Dashboard cards may perform a feedback lookup individually, creating an N+1 query pattern as the list grows. Load feedback in a batched query or denormalize summary fields.
+
+Product quality and evaluation
+- AI feedback is probabilistic and should be framed as practice guidance, not an objective hiring decision.
+- The current rubric is generic. Better evaluation would include role-specific expectations, evidence quotes from the transcript, and calibration guidance.
+- Speech-to-text can misrecognize accents, names, or technical terms. Make transcripts reviewable and let users correct errors.
+- Accessibility, mobile call behavior, consent for audio/transcript storage, deletion/export, privacy disclosures, and retention policy need explicit product treatment before a broad launch.
+- README.md remains the create-next-app starter content and does not explain setup, environment variables, architecture, or deployment. A project-specific README would help collaborators.
+
+======================================================================
+10. DEVELOPMENT CHALLENGES: HONEST TALKING POINTS
+======================================================================
+
+The repository does not document your personal development history. The following are likely challenges visible in the implementation. Use only the ones that match your actual experience and add a real example of what you tried and learned.
+
+Challenge: Coordinating multiple AI and voice services
+Possible answer: “The interview flow depends on separate services for question generation, speech transcription, voice synthesis, and feedback. I handled this by giving each service a clear role: Groq generates questions and evaluates the transcript, Vapi manages the live call, and Firebase stores the app's state. That separation made it easier to reason about where a failure occurred. I would improve it further with retries, provider timeouts, and clearer user-facing error states.”
+
+Challenge: Managing real-time call state and transcript events
+Possible answer: “A live call has asynchronous start, speech, transcript, end, and error events. I represented the call lifecycle with explicit states and registered Vapi listeners inside a React effect with cleanup. That gives the UI a simple state model and avoids leaving event handlers attached after unmount. I would next make call completion idempotent and ensure the final transcript is committed before evaluation.”
+
+Challenge: Getting reliable structured AI output
+Possible answer: “The UI expects consistent feedback fields, so I defined a Zod schema and used structured object generation. This makes the data easier to render and persist. I also learned that the prompt and schema labels must match, and that generation still needs error handling and validation at the boundaries.”
+
+Challenge: Keeping protected data on the server
+Possible answer: “The browser needs to sign users in, but privileged Firestore access should happen on the server. I used Firebase client auth to obtain an ID token, then exchanged it for an HTTP-only session cookie using Firebase Admin. The server verifies that cookie before resolving the current user. The next hardening step is applying that identity and ownership verification to every write endpoint, not trusting user IDs sent in request bodies.”
+
+Challenge: Persisting and connecting multiple stages of a workflow
+Possible answer: “An interview, transcript-derived feedback, and dashboard card have to refer to the same user and interview. I used Firestore documents with interviewId and userId fields to connect those records. I would strengthen this with runtime schemas, ownership checks, and an explicit status field such as draft, in-progress, completed, or failed.”
+
+Challenge: Making interview questions useful and voice-friendly
+Possible answer: “The question-generation prompt includes role, level, technology stack, focus, and quantity, and asks for questions without symbols that may sound awkward in speech. The improvement is to validate the generated array and build role-specific follow-up logic, rather than relying only on prompt instructions.”
+
+======================================================================
+11. BEST USE AND REAL-WORLD IMPACT
+======================================================================
+
+Best use cases:
+- Job seekers preparing for a first interview or a career change.
+- Students and bootcamp graduates who need repeated practice outside class.
+- Developers rehearsing explanations of technologies and project decisions.
+- Non-native speakers practicing concise spoken answers in a low-pressure environment.
+- Career centers or mentors offering structured practice between live coaching sessions.
+
+Potential real-world impact:
+- Makes practice available on demand and can reduce the coordination barrier of finding a mock interviewer.
+- Gives candidates a repeatable setting to build fluency and confidence.
+- Turns a practice conversation into feedback the candidate can review later.
+- Can support more consistent coaching if its rubric is transparent and role-specific.
+
+The tool should be positioned as a practice aid. It cannot fully reproduce human judgment, company-specific interview expectations, or the pressure and social nuance of a real interview. Its feedback can be wrong or biased, especially when transcription is inaccurate or the evaluation rubric is generic. A responsible deployment should disclose AI use, obtain consent for recording/transcript processing, protect user data, and avoid presenting scores as definitive measures of employability.
+
+======================================================================
+12. SAMPLE PROJECT WALKTHROUGH (ABOUT 90 SECONDS)
+======================================================================
+
+“PrepWise is an AI mock-interview app designed to help people practice speaking through job interviews. A user signs in with Firebase Authentication. The Next.js server verifies a Firebase session cookie and loads the user's dashboard data from Firestore. For a new scenario, the app sends the role, seniority, technologies, interview type, and question count to a route handler, which asks a Groq model for interview questions and stores the scenario. During practice, a client-side Agent component uses Vapi to run the voice conversation. It captures final transcript events and submits the transcript to a server action. That action uses Groq with a Zod feedback schema to produce category scores, strengths, improvement areas, and an overall assessment, then saves the report in Firestore. I chose this architecture to separate browser voice interaction from server-side persistence and AI evaluation. The main areas I would harden next are server-side ownership checks, robust structured question generation, idempotent call completion, rate limits, and clearer failure states.”
+
+======================================================================
+13. LIKELY INTERVIEWER QUESTIONS AND ANSWER GUIDANCE
+======================================================================
+
+Product and design
+
+Q: What problem does this project solve?
+A: It gives people a convenient way to practice interview answers aloud and receive structured feedback without arranging a live practice partner each time.
+
+Q: Who is the target user?
+A: Job seekers, students, career changers, and anyone who wants low-pressure repetition of interview conversations.
+
+Q: Why voice instead of a text chatbot?
+A: Real interviews require spoken communication. Voice practice lets a user rehearse pacing and verbal clarity. It also creates extra challenges around latency, transcription accuracy, and call state.
+
+Q: What is the most important user journey?
+A: Sign in, generate or choose a role-specific scenario, complete the voice practice, then review the feedback and retake the interview.
+
+Architecture and implementation
+
+Q: Why did you use Next.js App Router?
+A: It gives the project route layouts, server-rendered data loading, route handlers, and server actions in one framework. That fits a full-stack app with both interactive client UI and protected server operations.
+
+Q: Which parts are client components and why?
+A: AuthForm and Agent are client components because they use browser Firebase auth, React Hook Form state, Vapi browser events, and interactive call controls. Data pages and layouts can run on the server for session checks and Firestore reads.
+
+Q: Walk me through authentication.
+A: The browser signs in with Firebase Authentication and gets an ID token. A server action exchanges it for a seven-day HTTP-only session cookie using Firebase Admin. getCurrentUser verifies the cookie and loads the profile from Firestore. Protected layouts redirect users without a valid session.
+
+Q: Why use both Firebase client and Admin SDKs?
+A: The client SDK performs browser sign-up/sign-in. The Admin SDK is used in trusted server code to verify session cookies and perform privileged database operations.
+
+Q: How is an interview stored?
+A: As a Firestore document containing the role, level, type, technology stack, generated questions, owner userId, finalized flag, cover image, and creation timestamp.
+
+Q: How does question generation work?
+A: The route handler sends the scenario inputs to Groq through the AI SDK, asks for a JSON array, parses the response, and stores the resulting interview in Firestore.
+
+Q: How does the voice assistant know which questions to ask?
+A: The interview page passes the stored questions to Agent. Agent formats them as a list and supplies them as a variable to the interviewer assistant prompt configured in constants/index.ts.
+
+Q: How are transcripts captured?
+A: Agent listens for Vapi message events and saves only final transcript events with their speaker role and content. It also tracks call and speech events for UI state.
+
+Q: How is feedback generated?
+A: When the interview call ends, Agent submits the transcript and IDs to createFeedback. The server action calls Groq via generateObject with a Zod schema, then stores the returned scores and written feedback in Firestore.
+
+Q: Why use a schema for model output?
+A: It gives the application a known response shape and makes rendering predictable. It does not guarantee that the evaluation is fair or factually correct, so the prompt and output still need quality checks.
+
+Q: How do the dashboard queries work?
+A: The app fetches interviews owned by the user, ordered newest first, and separately fetches finalized interviews from other users with a limit. Cards query for matching feedback to show a score and summary.
+
+Security and reliability
+
+Q: What is the biggest security issue you would address first?
+A: The generation route trusts a user ID from the request body, and the feedback action accepts IDs without proving ownership. I would derive the user identity from a verified Firebase session and check ownership before every read or write.
+
+Q: What happens if the model returns invalid JSON?
+A: In the current question route, JSON.parse throws and the catch returns a 500 response. I would use schema-constrained object generation, validate request and response data, and present a retryable user-facing error.
+
+Q: How do you prevent duplicate feedback if call-end fires more than once?
+A: The current implementation needs a stronger guard. I would make completion idempotent with a state/ref guard and use a deterministic feedback document ID or transaction so retries cannot create duplicate records.
+
+Q: How would you handle rate limits and cost?
+A: Require a verified session, rate-limit by user, cap question count and input length, apply provider timeouts, track usage, and consider caching generated scenarios.
+
+Q: What if Vapi fails to start?
+A: The current code needs explicit error recovery. I would catch the failure, reset CONNECTING to INACTIVE, show a clear message, and allow retry.
+
+Q: How would you test it?
+A: Unit-test validation and data formatting, test auth and ownership rules, mock provider responses for action/route tests, and run an end-to-end flow from sign-in through feedback. Also test call-start, call-end, provider failure, empty transcript, and duplicate completion. (The repository does not currently show a test suite.)
+
+Evaluation and product judgment
+
+Q: Can users trust the score?
+A: It is a coaching signal generated from a transcript, not an objective hiring score. The app should explain limitations and show evidence and actionable feedback.
+
+Q: How would you improve feedback quality?
+A: Use a role-specific rubric, ask the model to cite transcript evidence, calibrate scoring examples, separate communication from technical correctness, and let users flag or correct transcription errors.
+
+Q: What privacy issues matter?
+A: Users may share personal stories and employment history. The product should disclose voice/transcript processing, collect consent, secure access, define retention and deletion, and avoid sending unnecessary personal data to providers.
+
+Q: How would you scale the system?
+A: Add indexes and pagination, batch dashboard feedback reads, move long model calls to background jobs if latency grows, add rate limiting and observability, and monitor Firestore/provider costs and error rates.
+
+Q: What would you build next?
+A: First enforce session ownership on all endpoints/actions. Then add explicit interview statuses, robust model validation/retries, clear loading/error states, and more evidence-based feedback. After that I would add progress tracking across attempts and role-specific rubrics.
+
+Q: What was your personal contribution?
+A: Answer accurately with the parts you personally designed and implemented. Be prepared to explain one specific code path in detail rather than claiming work you did not do.
+
+======================================================================
+14. QUICK DEMONSTRATION SCRIPT
+======================================================================
+
+1. Show the sign-in/sign-up experience and explain Firebase auth plus session cookies.
+2. Show the dashboard and explain the two interview lists.
+3. Start or open a role-specific scenario and describe the Groq question-generation route.
+4. Begin a voice call and point out the live call states and transcript display.
+5. End the interview and show the structured feedback report.
+6. Close with one strength, one limitation, and the next improvement you would implement.
+
+Before a live demo, verify provider credentials, Firebase configuration and permissions, any required Firestore indexes, microphone permission, network access, and model/Vapi quota. Have a short backup walkthrough ready in case a third-party service is unavailable.
+
+======================================================================
+15. TERMS TO KNOW
+======================================================================
+
+- App Router: Next.js routing based on the app directory, layouts, and route segments.
+- Server action: Server-side function callable from application code, commonly used for mutations or data operations.
+- Route handler: HTTP endpoint implemented under app/api using exported methods such as GET and POST.
+- Session cookie: Server-verifiable cookie representing a signed-in Firebase user session.
+- Structured generation: Asking a language model to return an object matching a defined schema.
+- Transcript: Text representation of the speakers' conversation, with role and content.
+- Idempotency: Repeating the same completion operation does not create duplicate effects.
+- Firestore index: Database structure that supports compound or ordered queries.
+- N+1 query pattern: A list query followed by an additional query for each item, which can increase latency and reads.
+
+======================================================================
+16. FINAL INTERVIEW ADVICE
+======================================================================
+
+- Explain the user problem before naming libraries.
+- Trace one request from UI through server code, provider, database, and back to the UI.
+- Be precise about what is implemented versus what you plan to improve.
+- Do not claim the AI score is objectively accurate; explain its limits.
+- If asked about a challenge, give a real example using situation, action, result, and what you learned. The challenge examples above are prompts, not evidence of your personal history.
+- Discuss security improvements candidly and prioritize verified identity and ownership checks.
+- Prepare a short demo and ensure external service configuration works before the interview.
